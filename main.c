@@ -21,32 +21,74 @@ int32_t brv(int32_t, int32_t);
 int32_t mod(int64_t, int32_t);
 
 int main(int argc, char const *argv[]) {
-    int k = 5;
-    int32_t* a = malloc(N * sizeof(int32_t));
-    int32_t* b = malloc(N * sizeof(int32_t));
-    int32_t* c1 = malloc(N * sizeof(int32_t));
-    int32_t* c2 = malloc(N * sizeof(int32_t));
-    int32_t q = modulus[k];
-    int32_t psi_p = psi[k];
-    int32_t psi_n = psi_neg[k];
-    int32_t n_n = n_neg[k];
-    srand(time(NULL));
-    for (int i = 0; i < N; i++) {
-        a[i] = mod(rand(), q);
-        b[i] = mod(rand(), q);
+    if (argc != 3) {
+        printf("Synopsis: ntt_bench <correctness runs> <timing runs>\n");
+        return 1;
     }
-    nwc_naive(q, a, b, c1);
-    int32_t* psis = brv_powers(psi_p, q, N);
-    int32_t* psis_ns = brv_powers(psi_n, q, N);
-    nwc_ntt(q, psis, psis_ns, n_n, a, b, c2);
-    for (int i = 0; i < N; i++) {
-        if (c1[i] != c2[i]) {
-            printf("not equal, i = %i\n", i);
-            break;
+
+    unsigned int seed1 = clock();
+    int k = 0;
+    for (int j = 0; j < strtol(argv[1], NULL, 10); j++) {
+        int32_t* a = malloc(N * sizeof(int32_t));
+        int32_t* b = malloc(N * sizeof(int32_t));
+        int32_t* c1 = malloc(N * sizeof(int32_t));
+        int32_t* c2 = malloc(N * sizeof(int32_t));
+        int32_t q = modulus[k];
+        int32_t psi_p = psi[k];
+        int32_t psi_n = psi_neg[k];
+        int32_t n_n = n_neg[k];
+        srand(time(NULL));
+        for (int i = 0; i < N; i++) {
+            a[i] = mod(rand_r(&seed1), q);
+            b[i] = mod(rand_r(&seed1), q);
         }
+        nwc_naive(q, a, b, c1);
+        int32_t* psis = brv_powers(psi_p, q, N);
+        int32_t* psis_ns = brv_powers(psi_n, q, N);
+        nwc_ntt(q, psis, psis_ns, n_n, a, b, c2);
+        for (int i = 0; i < N; i++) {
+            if (c1[i] != c2[i]) {
+                printf("failed correctness run %i with k = %i at i = %i\n", j, k, i);
+                break;
+            }
+        }
+        free(psis);
+        free(psis_ns);
+        if (k == NUM_Q - 1) k = 0;
+        else k++;
     }
-    free(psis);
-    free(psis_ns);
+    printf("passed all correctness runs\n");
+
+    unsigned int seed2 = clock();
+    k = 0;
+    clock_t t;
+    for (int j = 0; j < strtol(argv[2], NULL, 10); j++) {
+        int32_t* a = malloc(N * sizeof(int32_t));
+        int32_t* b = malloc(N * sizeof(int32_t));
+        int32_t* c = malloc(N * sizeof(int32_t));
+        int32_t q = modulus[k];
+        int32_t psi_p = psi[k];
+        int32_t psi_n = psi_neg[k];
+        int32_t n_n = n_neg[k];
+        srand(time(NULL));
+        for (int i = 0; i < N; i++) {
+            a[i] = mod(rand_r(&seed2), q);
+            b[i] = mod(rand_r(&seed2), q);
+        }
+        int32_t* psis = brv_powers(psi_p, q, N);
+        int32_t* psis_ns = brv_powers(psi_n, q, N);
+
+        t = clock();
+        nwc_ntt(q, psis, psis_ns, n_n, a, b, c);
+        t = clock() - t;
+        double time = (double) t / CLOCKS_PER_SEC;
+        printf("Time taken for run %i: %f\n", j, time);
+
+        free(psis);
+        free(psis_ns);
+        if (k == NUM_Q - 1) k = 0;
+        else k++;
+    }
     return 0;
 }
 
