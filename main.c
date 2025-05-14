@@ -34,6 +34,7 @@ int main(int argc, char const *argv[]) {
     int64_t psi_p = psi[k];
     int64_t psi_n = psi_neg[k];
     int64_t n_n = n_neg[k];
+    srand(time(NULL));
     for (int i = 0; i < N; i++) {
         a[i] = mod(rand(), q);
         b[i] = mod(rand(), q);
