@@ -29,10 +29,10 @@ int main(int argc, char const *argv[]) {
     unsigned int seed1 = clock();
     int k = 0;
     for (int j = 0; j < strtol(argv[1], NULL, 10); j++) {
-        int32_t* a = malloc(N * sizeof(int32_t));
-        int32_t* b = malloc(N * sizeof(int32_t));
-        int32_t* c1 = malloc(N * sizeof(int32_t));
-        int32_t* c2 = malloc(N * sizeof(int32_t));
+        int32_t* a = calloc(N, sizeof(int32_t));
+        int32_t* b = calloc(N, sizeof(int32_t));
+        int32_t* c1 = calloc(N, sizeof(int32_t));
+        int32_t* c2 = calloc(N, sizeof(int32_t));
         int32_t q = modulus[k];
         int32_t psi_p = psi[k];
         int32_t psi_n = psi_neg[k];
@@ -52,8 +52,7 @@ int main(int argc, char const *argv[]) {
                 break;
             }
         }
-        free(psis);
-        free(psis_ns);
+        free(a); free(b); free(c1); free(c2); free(psis); free(psis_ns);
         if (k == NUM_Q - 1) k = 0;
         else k++;
     }
@@ -65,9 +64,9 @@ int main(int argc, char const *argv[]) {
     k = 0;
     clock_t t;
     for (int j = 0; j < timing_runs; j++) {
-        int32_t* a = malloc(N * sizeof(int32_t));
-        int32_t* b = malloc(N * sizeof(int32_t));
-        int32_t* c = malloc(N * sizeof(int32_t));
+        int32_t* a = calloc(N, sizeof(int32_t));
+        int32_t* b = calloc(N, sizeof(int32_t));
+        int32_t* c = calloc(N, sizeof(int32_t));
         int32_t q = modulus[k];
         int32_t psi_p = psi[k];
         int32_t psi_n = psi_neg[k];
@@ -86,8 +85,7 @@ int main(int argc, char const *argv[]) {
         double time = (double) t / CLOCKS_PER_SEC;
         total_time += time;
 
-        free(psis);
-        free(psis_ns);
+        free(a); free(b); free(c); free(psis); free(psis_ns);
         if (k == NUM_Q - 1) k = 0;
         else k++;
     }
@@ -110,7 +108,7 @@ void nwc_naive(int32_t q, int32_t* a, int32_t* b, int32_t* c) {
 }
 
 /**
- * Calculates the NWV of a and b with modulus q, tables psi and psi^-1 and multiplicative inverse of n
+ * Calculates the NWC of a and b with modulus q, tables psi and psi^-1 and multiplicative inverse of n
  * and saves it in c.
  */
 void nwc_ntt(int32_t q, int32_t* psis, int32_t* psi_ns, int32_t n_neg, int32_t* a, int32_t* b, int32_t* c) {
