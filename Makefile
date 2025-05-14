@@ -1,16 +1,16 @@
 # Makefile for compiling main.c
 
 # Compiler to use
-CC = gcc
+CC = clang
 
 # Compiler flags
-CFLAGS = -Wall -Wextra
+CFLAGS = -Wall -Wextra -O3 -ffast-math
 
 # The target directory for output
 BUILD_DIR = build
 
 # The target executable
-TARGET = $(BUILD_DIR)/program
+TARGET = $(BUILD_DIR)/ntt_bench
 
 # Source files
 SRC = main.c

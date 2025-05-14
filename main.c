@@ -48,7 +48,7 @@ int main(int argc, char const *argv[]) {
         nwc_ntt(q, psis, psis_ns, n_n, a, b, c2);
         for (int i = 0; i < N; i++) {
             if (c1[i] != c2[i]) {
-                printf("failed correctness run %i with k = %i at i = %i\n", j, k, i);
+                printf("Failed correctness run %i with k = %i at i = %i\n", j, k, i);
                 break;
             }
         }
@@ -57,12 +57,14 @@ int main(int argc, char const *argv[]) {
         if (k == NUM_Q - 1) k = 0;
         else k++;
     }
-    printf("passed all correctness runs\n");
+    printf("Passed all correctness runs\n");
 
     unsigned int seed2 = clock();
+    int timing_runs = strtol(argv[2], NULL, 10);
+    double total_time = 0;
     k = 0;
     clock_t t;
-    for (int j = 0; j < strtol(argv[2], NULL, 10); j++) {
+    for (int j = 0; j < timing_runs; j++) {
         int32_t* a = malloc(N * sizeof(int32_t));
         int32_t* b = malloc(N * sizeof(int32_t));
         int32_t* c = malloc(N * sizeof(int32_t));
@@ -82,13 +84,15 @@ int main(int argc, char const *argv[]) {
         nwc_ntt(q, psis, psis_ns, n_n, a, b, c);
         t = clock() - t;
         double time = (double) t / CLOCKS_PER_SEC;
-        printf("Time taken for run %i: %f\n", j, time);
+        total_time += time;
 
         free(psis);
         free(psis_ns);
         if (k == NUM_Q - 1) k = 0;
         else k++;
     }
+    double average = total_time / timing_runs;
+    printf("Average time taken for %i timing-runs: %fs\n", timing_runs, average);
     return 0;
 }
 
