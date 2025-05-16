@@ -82,15 +82,14 @@ int main(int argc, char const *argv[]) {
         t = clock();
         nwc_ntt(q, psis, psis_ns, n_n, a, b, c);
         t = clock() - t;
-        double time = (double) t / CLOCKS_PER_SEC;
-        total_time += time;
+        total_time += (double) t / CLOCKS_PER_SEC;
 
         free(a); free(b); free(c); free(psis); free(psis_ns);
         if (k == NUM_Q - 1) k = 0;
         else k++;
     }
-    double average = total_time / timing_runs;
-    printf("Average time taken for %i timing-runs: %fs\n", timing_runs, average);
+    double average_time = total_time / timing_runs;
+    printf("Average time in %i timing-runs: %fs\n", timing_runs, average_time);
     return 0;
 }
 
