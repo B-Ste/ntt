@@ -1,7 +1,7 @@
 # Makefile for compiling main.c
 
 # Compiler to use
-CC = clang
+CC = gcc
 
 # Compiler flags
 CFLAGS = -Wall -Wextra -O3 -ffast-math
