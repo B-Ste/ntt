@@ -1,11 +1,13 @@
 #define N 4096
-#define BITLENGTH 12 // 2 ^ 12 = 4096
+#define BITLENGTH 12    // 2 ^ 12 = 4096
 #define NUM_Q 6
+#define L 30            // bit-length of moduli Q
 
 #include <inttypes.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
+#include <math.h>
 
 const int32_t modulus[NUM_Q] = {1068564481, 1069219841, 1070727169, 1071513601, 1072496641, 1073479681};
 const int32_t psi[NUM_Q] = {485176247, 429380462, 1026271992, 250036504, 378716967, 371836615};
@@ -18,7 +20,9 @@ void ntt(int32_t, int32_t*, int32_t*);
 void intt(int32_t, int32_t, int32_t*, int32_t*);
 int32_t* brv_powers(int32_t, int32_t, int32_t);
 int32_t brv(int32_t, int32_t);
-int32_t mod(int64_t, int32_t);
+int32_t mod_barrett(int64_t, int32_t); 
+int32_t mod_addition(int32_t, int32_t);
+int32_t mod_subtraction(int32_t, int32_t);
 
 int main(int argc, char const *argv[]) {
     if (argc != 3) {
@@ -39,8 +43,8 @@ int main(int argc, char const *argv[]) {
         int32_t n_n = n_neg[k];
         srand(time(NULL));
         for (int i = 0; i < N; i++) {
-            a[i] = mod(rand_r(&seed1), q);
-            b[i] = mod(rand_r(&seed1), q);
+            a[i] = mod_barrett(rand_r(&seed1), q);
+            b[i] = mod_barrett(rand_r(&seed1), q);
         }
         nwc_naive(q, a, b, c1);
         int32_t* psis = brv_powers(psi_p, q, N);
@@ -73,8 +77,8 @@ int main(int argc, char const *argv[]) {
         int32_t n_n = n_neg[k];
         srand(time(NULL));
         for (int i = 0; i < N; i++) {
-            a[i] = mod(rand_r(&seed2), q);
-            b[i] = mod(rand_r(&seed2), q);
+            a[i] = mod_barrett(rand_r(&seed2), q);
+            b[i] = mod_barrett(rand_r(&seed2), q);
         }
         int32_t* psis = brv_powers(psi_p, q, N);
         int32_t* psis_ns = brv_powers(psi_n, q, N);
@@ -99,9 +103,9 @@ int main(int argc, char const *argv[]) {
 void nwc_naive(int32_t q, int32_t* a, int32_t* b, int32_t* c) {
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < N; j++) {
-            int64_t c_k = mod((u_int64_t) a[i] * b[j], q);
-            if (i + j < N) c[i + j] = mod(c_k + c[i + j], q);
-            else c[i + j - N] = mod(c[i + j - N] - c_k, q);
+            int32_t c_k = mod_barrett((int64_t) a[i] * b[j], q);
+            if (i + j < N) c[i + j] = mod_addition(c_k + c[i + j], q);
+            else c[i + j - N] = mod_subtraction(c[i + j - N] - c_k, q);
         }
     }
 }
@@ -113,7 +117,7 @@ void nwc_naive(int32_t q, int32_t* a, int32_t* b, int32_t* c) {
 void nwc_ntt(int32_t q, int32_t* psis, int32_t* psi_ns, int32_t n_neg, int32_t* a, int32_t* b, int32_t* c) {
     ntt(q, psis, a);
     ntt(q, psis, b);
-    for (int i = 0; i < N; i++) c[i] = mod((int64_t) a[i] * b[i], q);
+    for (int i = 0; i < N; i++) c[i] = mod_barrett((int64_t) a[i] * b[i], q);
     intt(n_neg, q, psi_ns, c);
 }
 
@@ -130,10 +134,10 @@ void ntt(int32_t q, int32_t* psis, int32_t* a) {
             int j_2 = j_1 + t - 1;
             int32_t w = psis[m + i];
             for (int j = j_1; j <= j_2; j++) {
-                int64_t U = a[j];
-                int64_t V = (int64_t) w * a[j + t];
-                a[j] = mod(U + V, q);
-                a[j + t] = mod(U - V, q);
+                int32_t U = a[j];
+                int32_t V = mod_barrett((int64_t) w * a[j + t], q);
+                a[j] = mod_addition(U + V, q);
+                a[j + t] = mod_subtraction(U - V, q);
             }
         }
     }
@@ -153,20 +157,21 @@ void intt(int32_t inv_n, int32_t q, int32_t* psis, int32_t* a) {
             int j_2 = j_1 + t - 1;
             int32_t w = psis[h + i];
             for (int j = j_1; j <= j_2; j++) {
-                int64_t U = a[j];
-                int64_t V = a[j + t];
-                a[j] = mod(U + V, q);
-                a[j + t] = mod(w * (U - V), q); 
+                int32_t U = a[j];
+                int32_t V = a[j + t];
+                int32_t inner = mod_subtraction(U - V, q);
+                a[j] = mod_addition(U + V, q);
+                a[j + t] = mod_barrett((int64_t) w * inner, q); 
             }
             j_1 += 2 * t;
         }
         t *= 2;
     }
-    for (int j = 0; j < N; j++) a[j] = mod((int64_t) a[j] * inv_n, q);
+    for (int j = 0; j < N; j++) a[j] = mod_barrett((int64_t) a[j] * inv_n, q);
 }
 
 /**
- * bit-reverses i, which is of length n
+ * Bit-reverses i, which is of length n
  */
 int32_t brv(int32_t i, int32_t n) {
     int32_t brv = 0;
@@ -185,7 +190,7 @@ int32_t* brv_powers(int32_t p, int32_t q, int32_t n) {
     int32_t tmp = 1;
     brv_pwr[0] = 1;
     for (int i = 1; i < n; i++) {
-        int32_t r = mod((int64_t) tmp * p, q);
+        int32_t r = mod_barrett((int64_t) tmp * p, q);
         brv_pwr[brv(i, BITLENGTH)] = r;
         tmp = r;
     }
@@ -193,9 +198,31 @@ int32_t* brv_powers(int32_t p, int32_t q, int32_t n) {
 }
 
 /**
- * Computes a mod q, with the result beeing in [0,q-1].
- */
-int32_t mod(int64_t a, int32_t q) {
-    int64_t r = a % q;
-    return (int32_t) r < 0 ? r + q : r;
+ * Calculates a mod q, where a is in [0, 2q - 1].
+*/
+int32_t mod_addition(int32_t a, int32_t q) {
+    return a > q ? a - q : a;
+}
+
+/**
+ * Calculates a mod q, where a is in [-q + 1, q - 1].
+*/
+int32_t mod_subtraction(int32_t a, int32_t q) {
+    return a < 0 ? a + q : a;
+}
+
+/**
+ * Calculates a mod q by Barrett-Reduction, where a is in [0, q^2 - 2q + 1].
+ * Algorithm by: https://doi.org/10.1109/ICSICT.2012.6467863
+*/
+int32_t mod_barrett(int64_t a, int32_t q) {
+    const uint64_t lpower_2Lp3 = 1LL << (2 * L + 3);
+    const uint64_t lpower_Lm2 = 1LL << (L - 2);
+    const uint64_t lpower_Lp5 = 1LL << (L +  5);
+    const uint64_t lpower_Lp1 = 1LL << (L + 1);
+    const uint64_t lambda = lpower_2Lp3 / q;
+    uint64_t q_hat = floor(floor(a / lpower_Lm2) * lambda) / lpower_Lp5;
+    int64_t r0 = (a - q_hat * q) & (lpower_Lp1 - 1);
+    int64_t r1 = r0 - q;
+    return r1 >= 0 ? r1 : r0;
 }
