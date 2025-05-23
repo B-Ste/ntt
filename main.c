@@ -3,11 +3,23 @@
 #define NUM_Q 6
 #define L 30            // bit-length of moduli Q
 
+#ifdef BAR
+    #define MOD_ADD(a, q) mod_addition(a, q)
+    #define MOD_SUB(a, q) mod_subtraction(a, q)
+    #define MOD_MUL(a, q) mod_barrett(a, q)
+#else
+    #define MOD_ADD(a, q) mod(a, q)
+    #define MOD_SUB(a, q) mod(a, q)
+    #define MOD_MUL(a, q) mod(a, q)
+#endif
+
 #include <inttypes.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <time.h>
 #include <math.h>
+
+// extra primes: 1063321601, 1063452673, 1064697857, 1065484289, 1065811969, 1068236801, 1068433409
 
 const int32_t modulus[NUM_Q] = {1068564481, 1069219841, 1070727169, 1071513601, 1072496641, 1073479681};
 const int32_t psi[NUM_Q] = {485176247, 429380462, 1026271992, 250036504, 378716967, 371836615};
@@ -20,6 +32,7 @@ void ntt(int32_t, int32_t*, int32_t*);
 void intt(int32_t, int32_t, int32_t*, int32_t*);
 int32_t* brv_powers(int32_t, int32_t, int32_t);
 int32_t brv(int32_t, int32_t);
+int32_t mod(int64_t, int32_t);
 int32_t mod_barrett(int64_t, int32_t); 
 int32_t mod_addition(int32_t, int32_t);
 int32_t mod_subtraction(int32_t, int32_t);
@@ -103,9 +116,9 @@ int main(int argc, char const *argv[]) {
 void nwc_naive(int32_t q, int32_t* a, int32_t* b, int32_t* c) {
     for (int i = 0; i < N; i++) {
         for (int j = 0; j < N; j++) {
-            int32_t c_k = mod_barrett((int64_t) a[i] * b[j], q);
-            if (i + j < N) c[i + j] = mod_addition(c_k + c[i + j], q);
-            else c[i + j - N] = mod_subtraction(c[i + j - N] - c_k, q);
+            int32_t c_k = MOD_MUL((int64_t) a[i] * b[j], q);
+            if (i + j < N) c[i + j] = MOD_ADD(c_k + c[i + j], q);
+            else c[i + j - N] = MOD_SUB(c[i + j - N] - c_k, q);
         }
     }
 }
@@ -117,7 +130,7 @@ void nwc_naive(int32_t q, int32_t* a, int32_t* b, int32_t* c) {
 void nwc_ntt(int32_t q, int32_t* psis, int32_t* psi_ns, int32_t n_neg, int32_t* a, int32_t* b, int32_t* c) {
     ntt(q, psis, a);
     ntt(q, psis, b);
-    for (int i = 0; i < N; i++) c[i] = mod_barrett((int64_t) a[i] * b[i], q);
+    for (int i = 0; i < N; i++) c[i] = MOD_MUL((int64_t) a[i] * b[i], q);
     intt(n_neg, q, psi_ns, c);
 }
 
@@ -135,9 +148,9 @@ void ntt(int32_t q, int32_t* psis, int32_t* a) {
             int32_t w = psis[m + i];
             for (int j = j_1; j <= j_2; j++) {
                 int32_t U = a[j];
-                int32_t V = mod_barrett((int64_t) w * a[j + t], q);
-                a[j] = mod_addition(U + V, q);
-                a[j + t] = mod_subtraction(U - V, q);
+                int32_t V = MOD_MUL((int64_t) w * a[j + t], q);
+                a[j] = MOD_ADD(U + V, q);
+                a[j + t] = MOD_SUB(U - V, q);
             }
         }
     }
@@ -159,15 +172,15 @@ void intt(int32_t inv_n, int32_t q, int32_t* psis, int32_t* a) {
             for (int j = j_1; j <= j_2; j++) {
                 int32_t U = a[j];
                 int32_t V = a[j + t];
-                int32_t inner = mod_subtraction(U - V, q);
-                a[j] = mod_addition(U + V, q);
-                a[j + t] = mod_barrett((int64_t) w * inner, q); 
+                int32_t inner = MOD_SUB(U - V, q);
+                a[j] = MOD_ADD(U + V, q);
+                a[j + t] = MOD_MUL((int64_t) w * inner, q); 
             }
             j_1 += 2 * t;
         }
         t *= 2;
     }
-    for (int j = 0; j < N; j++) a[j] = mod_barrett((int64_t) a[j] * inv_n, q);
+    for (int j = 0; j < N; j++) a[j] = MOD_MUL((int64_t) a[j] * inv_n, q);
 }
 
 /**
@@ -195,6 +208,14 @@ int32_t* brv_powers(int32_t p, int32_t q, int32_t n) {
         tmp = r;
     }
     return brv_pwr;
+}
+
+/**
+ * Calculates a mod q naively.
+*/
+int32_t mod(int64_t a, int32_t q) {
+    int32_t r = a % q;
+    return r < 0 ? r + q : r;
 }
 
 /**

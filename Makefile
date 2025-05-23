@@ -1,33 +1,35 @@
-# Makefile for compiling main.c
-
-# Compiler to use
+# Define the compiler to use
 CC = gcc
 
-# Compiler flags
+# Define compiler flags
 CFLAGS = -Wall -Wextra -O3 -ffast-math
 
-# The target directory for output
-BUILD_DIR = build
-
-# The target executable
-TARGET = $(BUILD_DIR)/ntt_bench
-
-# Source files
+# Define the source file
 SRC = main.c
 
-# Create build directory if it doesn't exist
-$(BUILD_DIR):
-	mkdir -p $(BUILD_DIR)
+# Define the build directory and the target executable name
+BUILD_DIR = build
+TARGET = $(BUILD_DIR)/ntt_bench
 
-# Build target
-all: $(BUILD_DIR) $(TARGET)
+# Targets to create
+.PHONY: all with_bar without_bar clean
 
-# Linking the object file to create the executable
+all: without_bar with_bar
+
+# Target for compiling without the -D BAR flag
+without_bar: $(TARGET)
+
 $(TARGET): $(SRC)
-	$(CC) $(CFLAGS) -o $(TARGET) $(SRC)
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -o $@ $^
 
-# Clean up the compiled files
+# Target for compiling with the -D BAR flag
+with_bar: $(TARGET)_bar
+
+$(TARGET)_bar: $(SRC)
+	mkdir -p $(BUILD_DIR)
+	$(CC) $(CFLAGS) -D BAR -o $@ $^
+
+# Clean up the build directory
 clean:
 	rm -rf $(BUILD_DIR)
-
-.PHONY: all clean
