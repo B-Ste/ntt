@@ -31,9 +31,12 @@ const int32_t n_neg[NUM_Q] = {1063062001, 1063193041, 1064437921, 1065224161, 10
 void nwc_naive(int32_t, int32_t*, int32_t*, int32_t*);
 void nwc_ntt(int32_t, int32_t*, int32_t*, int32_t, int32_t*, int32_t*, int32_t*);
 void ntt(int32_t, int32_t*, int32_t*);
+void ntt_packed(int32_t, int32_t*, int64_t*);
 void intt(int32_t, int32_t, int32_t*, int32_t*);
 void pack(int32_t*, int64_t*);
 void unpack(int64_t*, int32_t*);
+void unpack_after_ntt(int64_t*, int32_t*);
+int64_t pack_single(int32_t, int32_t);
 int32_t get_first(int64_t);
 int32_t get_second(int64_t);
 int32_t* brv_powers(int32_t, int32_t, int32_t);
@@ -45,6 +48,7 @@ int32_t mod_subtraction(int32_t, int32_t);
 int performance_test();
 int correctness_test_normal_ntt();
 int packing_test();
+int correctness_test_packed_ntt();
 
 int main(int argc, char const *argv[]) {
     if (argc != 1) {
@@ -57,7 +61,7 @@ int main(int argc, char const *argv[]) {
     printf("1) performance-test\n");
     printf("2) correctness-test for normal NTT\n");
     printf("3) correctness-test for packing\n");
-    printf("4) correctness-test for packed algorithm\n");
+    printf("4) correctness-test for packed NTT\n");
     printf("Selection: ");
     scanf("%d", &program_selection);
 
@@ -66,6 +70,7 @@ int main(int argc, char const *argv[]) {
     case 1: return performance_test();
     case 2: return correctness_test_normal_ntt();
     case 3: return packing_test();
+    case 4: return correctness_test_packed_ntt();
     default:
         printf("Unknown program. Exiting.\n");
         return 1;
@@ -196,6 +201,49 @@ int packing_test() {
     }
 }
 
+int correctness_test_packed_ntt() {
+    int correctness_runs;
+    printf("Number of correctness-runs: ");
+    scanf("%d", &correctness_runs);
+
+    unsigned int seed1 = clock();
+    int k = 0;
+    int fail = 0;
+    for (int j = 0; j < correctness_runs; j++) {
+        int32_t* a = calloc(N, sizeof(int32_t));
+        int32_t* b = calloc(N, sizeof(int32_t));
+        int32_t q = modulus[k];
+        int32_t psi_p = psi[k];
+        int32_t* psis = brv_powers(psi_p, q, N);
+        int64_t* g = calloc(N/2, sizeof(int64_t));
+        srand(time(NULL));
+        for (int i = 0; i < N; i++) {
+            a[i] = mod_barrett(rand_r(&seed1), q);
+        }
+        pack(a, g);
+        ntt(q, psis, a);
+        ntt_packed(q, psis, g);
+        unpack_after_ntt(g, b);
+        for (int i = 0; i < N; i++) {
+            if (a[i] != b[i]) {
+                printf("Failed correctness run %i with k = %i at i = %i\n", j, k, i);
+                fail = 0;
+                break;
+            }
+        }
+        free(a); free(b); free(g); free(psis);
+        if (k == NUM_Q - 1) k = 0;
+        else k++;
+    }
+    if (fail) {
+        printf("Failed correctness runs on correctness test for packed NTT.\n");
+        return 1;
+    } else {
+        printf("Passed all correctness runs on correctness test for packed NTT.\n");
+        return 0;
+    }
+}
+
 /**
  * Calculates the NWC of a and b with modulus q naively in O(n^2) and saves it in c.
  */
@@ -221,8 +269,8 @@ void nwc_ntt(int32_t q, int32_t* psis, int32_t* psi_ns, int32_t n_neg, int32_t* 
 }
 
 /**
- * Calculates the forward NTT of a with modulus q and bit-reverse ordered list psis of powers of
- * a 2n-th root of unity. The result is saved in a int bit-reversed order.
+ * Calculates the forward NTT of a polynomial a with modulus q and bit-reverse ordered list psis of powers of
+ * a 2n-th root of unity. The result is saved in a in bit-reversed order.
  */
 void ntt(int32_t q, int32_t* psis, int32_t* a) {
     int t = N;
@@ -239,6 +287,42 @@ void ntt(int32_t q, int32_t* psis, int32_t* a) {
                 a[j + t] = MOD_SUB(U - V, q);
             }
         }
+    }
+}
+
+/**
+ * Calculates the forward NTT of a packed poylnomial a with modulus q and bit-reverse ordered list psis of powers of
+ * a 2n-th root of unity. The result is saved in a in packed bit-reversed order.
+ */
+void ntt_packed(int32_t q, int32_t* psis, int64_t* a) {
+    int t = N/2;
+    for (int m = 1; m < N/2; m *= 2) {
+        t /= 2;
+        for (int i = 0; i < m; i++) {
+            int j1 = 2 * i * t;
+            int j2 = j1 + t - 1;
+            int32_t w = psis[m + i];
+            for (int j = j1; j <= j2; j++) {
+                int32_t u1 = get_first(a[j]);
+                int32_t v1 = MOD_MUL((int64_t) w * get_second(a[j]), q);
+                int32_t u2 = get_first(a[j + t]);
+                int32_t v2 = MOD_MUL((int64_t) w * get_second(a[j + t]), q);
+                int32_t r1 = MOD_ADD(u1 + v1, q);
+                int32_t r2 = MOD_SUB(u1 - v1, q);
+                int32_t r3 = MOD_ADD(u2 + v2, q);
+                int32_t r4 = MOD_SUB(u2 - v2, q);
+                a[j] = pack_single(r1, r3);
+                a[j + t] = pack_single(r2, r4);
+            }
+        }
+    }
+    for (int j = 0; j < N/2; j++) {
+        int32_t w = psis[N/2 + j];
+        int32_t U = get_first(a[j]);
+        int32_t V = MOD_MUL((int64_t) w * get_second(a[j]), q);
+        int32_t r1 = MOD_ADD(U + V, q);
+        int32_t r2 = MOD_SUB(U - V, q);
+        a[j] = pack_single(r1, r2);
     }
 }
 
@@ -269,24 +353,55 @@ void intt(int32_t inv_n, int32_t q, int32_t* psis, int32_t* a) {
     for (int j = 0; j < N; j++) a[j] = MOD_MUL((int64_t) a[j] * inv_n, q);
 }
 
+/**
+ * Packs two 30-bit coefficients into one 60-bit word, with a1 in the lower significance and
+ * a2 in the higher significance bits.
+ */
+int64_t pack_single(int32_t a1, int32_t a2) {
+    return a1 | ((int64_t) a2 << 30);
+}
+
+/**
+ * Returns first 30-bit coefficient in 60-bit word containing two coefficients.
+ */
 int32_t get_first(int64_t g) {
     return (int32_t) (g & 1073741823);
 }
 
+/**
+ * Returns second 30-bit coefficient in 60-bit word containing two coefficients.
+ */
 int32_t get_second(int64_t g) {
     return (int32_t) ((g >> 30) & 1073741823);
 }
 
+/**
+ * Packs polynomial a of N 30-bit coefficients into a N/2 long array of 60-bit words, where
+ * word i contains coefficients a[i] and a[i + N/2].
+ */
 void pack(int32_t* a, int64_t* g) {
-    for (int i = 0; i < N/2; i++) {
-        g[i] = a[i] | ((int64_t) a[i + N/2] << 30);
-    }
+    for (int i = 0; i < N/2; i++) g[i] = pack_single(a[i], a[i + N/2]);
 }
 
+/**
+ * Unpacks 30-bit coefficients from N/2 long 60-bit word array into length N polynomial, where
+ * word i contains coefficients a[i] and a[i + N/2].
+ */
 void unpack(int64_t* g, int32_t* a) {
     for (int i = 0; i < N/2; i++) {
         a[i] = get_first(g[i]);
         a[i + N/2] = get_second(g[i]);
+    }
+}
+
+/**
+ * Unpacks 30-bit coefficients from N/2 long 60-bit word array into length N polynomial, where
+ * word i contains coefficients a[2 * i] and a[2 * i + ].
+ */
+void unpack_after_ntt(int64_t* g, int32_t* a) {
+    for (int i = 0; i < N/2; i++) {
+        a[2 * i] = get_first(g[i]);
+        a[2 * i + 1] = get_second(g[i]);
     }
 }
 
