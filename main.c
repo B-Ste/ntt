@@ -19,8 +19,6 @@
 #include <time.h>
 #include <math.h>
 
-// extra primes: 1063321601, 1063452673, 1064697857, 1065484289, 1065811969, 1068236801, 1068433409
-
 const int32_t modulus[NUM_Q] = {1063321601, 1063452673, 1064697857, 1065484289, 1065811969, 1068236801, 
     1068433409, 1068564481, 1069219841, 1070727169, 1071513601, 1072496641, 1073479681};
 const int32_t psi[NUM_Q] = {210627128, 528517222, 152301028, 433219053, 644958739, 932161456, 
@@ -34,55 +32,54 @@ void nwc_naive(int32_t, int32_t*, int32_t*, int32_t*);
 void nwc_ntt(int32_t, int32_t*, int32_t*, int32_t, int32_t*, int32_t*, int32_t*);
 void ntt(int32_t, int32_t*, int32_t*);
 void intt(int32_t, int32_t, int32_t*, int32_t*);
+void pack(int32_t*, int64_t*);
+void unpack(int64_t*, int32_t*);
+int32_t get_first(int64_t);
+int32_t get_second(int64_t);
 int32_t* brv_powers(int32_t, int32_t, int32_t);
 int32_t brv(int32_t, int32_t);
 int32_t mod(int64_t, int32_t);
 int32_t mod_barrett(int64_t, int32_t); 
 int32_t mod_addition(int32_t, int32_t);
 int32_t mod_subtraction(int32_t, int32_t);
+int performance_test();
+int correctness_test_normal_ntt();
+int packing_test();
 
 int main(int argc, char const *argv[]) {
-    if (argc != 3) {
-        printf("Synopsis: ntt_bench <correctness runs> <timing runs>\n");
+    if (argc != 1) {
+        printf("This program is run without arguments.\n");
         return 1;
     }
 
-    unsigned int seed1 = clock();
-    int k = 0;
-    for (int j = 0; j < strtol(argv[1], NULL, 10); j++) {
-        int32_t* a = calloc(N, sizeof(int32_t));
-        int32_t* b = calloc(N, sizeof(int32_t));
-        int32_t* c1 = calloc(N, sizeof(int32_t));
-        int32_t* c2 = calloc(N, sizeof(int32_t));
-        int32_t q = modulus[k];
-        int32_t psi_p = psi[k];
-        int32_t psi_n = psi_neg[k];
-        int32_t n_n = n_neg[k];
-        srand(time(NULL));
-        for (int i = 0; i < N; i++) {
-            a[i] = mod_barrett(rand_r(&seed1), q);
-            b[i] = mod_barrett(rand_r(&seed1), q);
-        }
-        nwc_naive(q, a, b, c1);
-        int32_t* psis = brv_powers(psi_p, q, N);
-        int32_t* psis_ns = brv_powers(psi_n, q, N);
-        nwc_ntt(q, psis, psis_ns, n_n, a, b, c2);
-        for (int i = 0; i < N; i++) {
-            if (c1[i] != c2[i]) {
-                printf("Failed correctness run %i with k = %i at i = %i\n", j, k, i);
-                break;
-            }
-        }
-        free(a); free(b); free(c1); free(c2); free(psis); free(psis_ns);
-        if (k == NUM_Q - 1) k = 0;
-        else k++;
+    int program_selection;
+    printf("Select program:\n");
+    printf("1) performance-test\n");
+    printf("2) correctness-test for normal NTT\n");
+    printf("3) correctness-test for packing\n");
+    printf("4) correctness-test for packed algorithm\n");
+    printf("Selection: ");
+    scanf("%d", &program_selection);
+
+    switch (program_selection)
+    {
+    case 1: return performance_test();
+    case 2: return correctness_test_normal_ntt();
+    case 3: return packing_test();
+    default:
+        printf("Unknown program. Exiting.\n");
+        return 1;
     }
-    printf("Passed all correctness runs\n");
+}
+
+int performance_test() {
+    int timing_runs;
+    printf("Number of timing-runs: ");
+    scanf("%d", &timing_runs);
 
     unsigned int seed2 = clock();
-    int timing_runs = strtol(argv[2], NULL, 10);
     double total_time = 0;
-    k = 0;
+    int k = 0;
     clock_t t;
     for (int j = 0; j < timing_runs; j++) {
         int32_t* a = calloc(N, sizeof(int32_t));
@@ -112,6 +109,91 @@ int main(int argc, char const *argv[]) {
     double average_time = total_time / timing_runs;
     printf("Average time in %i timing-runs: %fs\n", timing_runs, average_time);
     return 0;
+}
+
+int correctness_test_normal_ntt() {
+    int correctness_runs;
+    printf("Number of correctness-runs: ");
+    scanf("%d", &correctness_runs);
+
+    unsigned int seed1 = clock();
+    int k = 0;
+    int fail = 0;
+    for (int j = 0; j < correctness_runs; j++) {
+        int32_t* a = calloc(N, sizeof(int32_t));
+        int32_t* b = calloc(N, sizeof(int32_t));
+        int32_t* c1 = calloc(N, sizeof(int32_t));
+        int32_t* c2 = calloc(N, sizeof(int32_t));
+        int32_t q = modulus[k];
+        int32_t psi_p = psi[k];
+        int32_t psi_n = psi_neg[k];
+        int32_t n_n = n_neg[k];
+        srand(time(NULL));
+        for (int i = 0; i < N; i++) {
+            a[i] = mod_barrett(rand_r(&seed1), q);
+            b[i] = mod_barrett(rand_r(&seed1), q);
+        }
+        nwc_naive(q, a, b, c1);
+        int32_t* psis = brv_powers(psi_p, q, N);
+        int32_t* psis_ns = brv_powers(psi_n, q, N);
+        nwc_ntt(q, psis, psis_ns, n_n, a, b, c2);
+        for (int i = 0; i < N; i++) {
+            if (c1[i] != c2[i]) {
+                printf("Failed correctness run %i with k = %i at i = %i\n", j, k, i);
+                fail = 1;
+                break;
+            }
+        }
+        free(a); free(b); free(c1); free(c2); free(psis); free(psis_ns);
+        if (k == NUM_Q - 1) k = 0;
+        else k++;
+    }
+    if (fail) {
+        printf("Failed tests on correctness test for normal NTT.\n");
+        return 1;
+    } else {
+        printf("Passed all correctness runs on correctness test for normal NTT.\n");
+        return 0;
+    }
+}
+
+int packing_test() {
+    int correctness_runs;
+    printf("Number of correctness-runs: ");
+    scanf("%d", &correctness_runs);
+
+    unsigned int seed1 = clock();
+    int k = 0;
+    int fail = 0;
+    for (int j = 0; j < correctness_runs; j++) {
+        int32_t* a = calloc(N, sizeof(int32_t));
+        int32_t* b = calloc(N, sizeof(int32_t));
+        int64_t* g = calloc(N/2, sizeof(int64_t));
+        int32_t q = modulus[k];
+        srand(time(NULL));
+        for (int i = 0; i < N; i++) {
+            a[i] = mod_barrett(rand_r(&seed1), q);
+        }
+        pack(a, g);
+        unpack(g, b);
+        for (int i = 0; i < N; i++) {
+            if (a[i] != b[i]) {
+                printf("Failed correctness run %i with k = %i at i = %i with a[i] = %x b[i] = %x\n", j, k, i, a[i], b[i]);
+                fail = 1;
+                break;
+            }
+        }
+        free(a); free(b); free(g);
+        if (k == NUM_Q - 1) k = 0;
+        else k++;
+    }
+    if (fail) {
+        printf("Failed correctness runs on correctness test for packing.\n");
+        return 1;
+    } else {
+        printf("Passed all correctness runs on correctness test for packing.\n");
+        return 0;
+    }
 }
 
 /**
@@ -185,6 +267,27 @@ void intt(int32_t inv_n, int32_t q, int32_t* psis, int32_t* a) {
         t *= 2;
     }
     for (int j = 0; j < N; j++) a[j] = MOD_MUL((int64_t) a[j] * inv_n, q);
+}
+
+int32_t get_first(int64_t g) {
+    return (int32_t) (g & 1073741823);
+}
+
+int32_t get_second(int64_t g) {
+    return (int32_t) ((g >> 30) & 1073741823);
+}
+
+void pack(int32_t* a, int64_t* g) {
+    for (int i = 0; i < N/2; i++) {
+        g[i] = a[i] | ((int64_t) a[i + N/2] << 30);
+    }
+}
+
+void unpack(int64_t* g, int32_t* a) {
+    for (int i = 0; i < N/2; i++) {
+        a[i] = get_first(g[i]);
+        a[i + N/2] = get_second(g[i]);
+    }
 }
 
 /**
