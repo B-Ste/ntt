@@ -2,6 +2,7 @@
 #define BITLENGTH 12    // 2 ^ 12 = 4096
 #define NUM_Q 13
 #define L 30            // bit-length of moduli Q
+#define C 32            // number of cores
 
 #ifdef BAR
     #define MOD_ADD(a, q) mod_addition(a, q)
@@ -32,10 +33,14 @@ void nwc_naive(int32_t, int32_t*, int32_t*, int32_t*);
 void nwc_ntt(int32_t, int32_t*, int32_t*, int32_t, int32_t*, int32_t*, int32_t*);
 void ntt(int32_t, int32_t*, int32_t*);
 void ntt_packed(int32_t, int32_t*, int64_t*);
+void ntt_multi_packed(int32_t, int32_t*);
 void intt(int32_t, int32_t, int32_t*, int32_t*);
 void pack(int32_t*, int64_t*);
 void unpack(int64_t*, int32_t*);
 void unpack_after_ntt(int64_t*, int32_t*);
+void load_memory(int64_t*);
+void unload_memory(int64_t*);
+void unload_after_ntt(int64_t*);
 int64_t pack_single(int32_t, int32_t);
 int32_t get_first(int64_t);
 int32_t get_second(int64_t);
@@ -49,6 +54,8 @@ int performance_test();
 int correctness_test_normal_ntt();
 int packing_test();
 int correctness_test_packed_ntt();
+int correctness_test_multi_packed_ntt();
+int memory_test();
 
 int main(int argc, char const *argv[]) {
     if (argc != 1) {
@@ -62,6 +69,8 @@ int main(int argc, char const *argv[]) {
     printf("2) correctness-test for normal NTT\n");
     printf("3) correctness-test for packing\n");
     printf("4) correctness-test for packed NTT\n");
+    printf("5) correctness-test for multi-core packed NTT\n");
+    printf("6) correctness-test for memory load & unload\n");
     printf("Selection: ");
     scanf("%d", &program_selection);
 
@@ -71,6 +80,8 @@ int main(int argc, char const *argv[]) {
     case 2: return correctness_test_normal_ntt();
     case 3: return packing_test();
     case 4: return correctness_test_packed_ntt();
+    case 5: return correctness_test_multi_packed_ntt();
+    case 6: return memory_test();
     default:
         printf("Unknown program. Exiting.\n");
         return 1;
@@ -244,6 +255,98 @@ int correctness_test_packed_ntt() {
     }
 }
 
+int memory_test() {
+    int correctness_runs;
+    printf("Number of correctness-runs: ");
+    scanf("%d", &correctness_runs);
+
+    unsigned int seed1 = clock();
+    int k = 0;
+    int fail = 0;
+    for (int j = 0; j < correctness_runs; j++) {
+        int32_t* a = calloc(N, sizeof(int32_t));
+        int32_t* b = calloc(N, sizeof(int32_t));
+        int64_t* g = calloc(N/2, sizeof(int64_t));
+        int32_t q = modulus[k];
+        srand(time(NULL));
+        for (int i = 0; i < N; i++) {
+            a[i] = mod_barrett(rand_r(&seed1), q);
+        }
+        pack(a, g);
+        load_memory(g);
+        unload_memory(g);
+        unpack(g, b);
+        for (int i = 0; i < N; i++) {
+            if (a[i] != b[i]) {
+                printf("Failed correctness run %i with k = %i at i = %i with a[i] = %x b[i] = %x\n", j, k, i, a[i], b[i]);
+                fail = 1;
+                break;
+            }
+        }
+        free(a); free(b); free(g);
+        if (k == NUM_Q - 1) k = 0;
+        else k++;
+    }
+    if (fail) {
+        printf("Failed correctness runs on correctness test for memory.\n");
+        return 1;
+    } else {
+        printf("Passed all correctness runs on correctness test for memory.\n");
+        return 0;
+    }
+}
+
+int correctness_test_multi_packed_ntt() {
+    int correctness_runs;
+    printf("Number of correctness-runs: ");
+    scanf("%d", &correctness_runs);
+
+    unsigned int seed1 = clock();
+    int k = 0;
+    int fail = 0;
+    for (int j = 0; j < correctness_runs; j++) {
+        int32_t* a = calloc(N, sizeof(int32_t));
+        int32_t* b = calloc(N, sizeof(int32_t));
+        int32_t q = modulus[k];
+        int32_t psi_p = psi[k];
+        int32_t* psis = brv_powers(psi_p, q, N);
+        int64_t* g = calloc(N/2, sizeof(int64_t));
+        srand(time(NULL));
+        for (int i = 0; i < N; i++) {
+            a[i] = mod_barrett(rand_r(&seed1), q);
+        }
+        pack(a, g);
+        ntt(q, psis, a);
+        load_memory(g);
+        ntt_multi_packed(q, psis);
+        unload_after_ntt(g);
+        unpack_after_ntt(g, b);
+        for (int i = 0; i < N; i++) {
+            if (a[i] != b[i]) {
+                printf("Failed correctness run %i with k = %i at i = %i\n", j, k, i);
+                fail = 1;
+                break;
+            }
+        }
+        free(a); free(b); free(g); free(psis);
+        if (k == NUM_Q - 1) k = 0;
+        else k++;
+    }
+    if (fail) {
+        printf("Failed correctness runs on correctness test for multi-core packed NTT.\n");
+        return 1;
+    } else {
+        printf("Passed all correctness runs on correctness test for multi-core packed NTT.\n");
+        return 0;
+    }
+}
+
+
+
+///////////////////
+// NAIVE VERSION //
+///////////////////
+
 /**
  * Calculates the NWC of a and b with modulus q naively in O(n^2) and saves it in c.
  */
@@ -256,6 +359,12 @@ void nwc_naive(int32_t q, int32_t* a, int32_t* b, int32_t* c) {
         }
     }
 }
+
+
+
+//////////////////
+// STANDARD NTT //
+//////////////////
 
 /**
  * Calculates the NWC of a and b with modulus q, tables psi and psi^-1 and multiplicative inverse of n
@@ -289,6 +398,39 @@ void ntt(int32_t q, int32_t* psis, int32_t* a) {
         }
     }
 }
+
+/**
+ * Calculates the inverse NTT (INTT) of bit-reversed a with modulus q, multiplicative inverse of N, bit-reverse 
+ * ordered list psis of powers of the multiplicative inverse of a 2n-th root of unity. The result is saved in a 
+ * in normal order.
+ */
+void intt(int32_t inv_n, int32_t q, int32_t* psis, int32_t* a) {
+    int t = 1;
+    for (int m = N; m > 1; m /= 2) {
+        int j_1 = 0;
+        int h = m / 2;
+        for (int i = 0; i < h; i++) {
+            int j_2 = j_1 + t - 1;
+            int32_t w = psis[h + i];
+            for (int j = j_1; j <= j_2; j++) {
+                int32_t U = a[j];
+                int32_t V = a[j + t];
+                int32_t inner = MOD_SUB(U - V, q);
+                a[j] = MOD_ADD(U + V, q);
+                a[j + t] = MOD_MUL((int64_t) w * inner, q); 
+            }
+            j_1 += 2 * t;
+        }
+        t *= 2;
+    }
+    for (int j = 0; j < N; j++) a[j] = MOD_MUL((int64_t) a[j] * inv_n, q);
+}
+
+
+
+////////////////
+// PACKED NTT //
+////////////////
 
 /**
  * Calculates the forward NTT of a packed poylnomial a with modulus q and bit-reverse ordered list psis of powers of
@@ -326,32 +468,160 @@ void ntt_packed(int32_t q, int32_t* psis, int64_t* a) {
     }
 }
 
+
+
+/////////////////////////////////////
+// MULTICORE PACKED NTT SIMULATION //
+/////////////////////////////////////
+
+int64_t memory[C][2][N / (4 * C)];
+int32_t router_input[C][N / (4 * C)][4];
+
 /**
- * Calculates the inverse NTT (INTT) of bit-reversed a with modulus q, multiplicative inverse of N, bit-reverse 
- * ordered list psis of powers of the multiplicative inverse of a 2n-th root of unity. The result is saved in a 
- * in normal order.
+ * Loads packed polynomial a into memory.
  */
-void intt(int32_t inv_n, int32_t q, int32_t* psis, int32_t* a) {
-    int t = 1;
-    for (int m = N; m > 1; m /= 2) {
-        int j_1 = 0;
-        int h = m / 2;
-        for (int i = 0; i < h; i++) {
-            int j_2 = j_1 + t - 1;
-            int32_t w = psis[h + i];
-            for (int j = j_1; j <= j_2; j++) {
-                int32_t U = a[j];
-                int32_t V = a[j + t];
-                int32_t inner = MOD_SUB(U - V, q);
-                a[j] = MOD_ADD(U + V, q);
-                a[j + t] = MOD_MUL((int64_t) w * inner, q); 
-            }
-            j_1 += 2 * t;
+void load_memory(int64_t* a) {
+    for (int k = 0; k < C; k++) {
+        for (int j = 0; j < N / (4 * C); j++) {
+            memory[k][0][j] = a[k * (N / (4 * C)) + j];
+            memory[k][1][j] = a[k * (N / (4 * C)) + j + (N / 4)];
         }
-        t *= 2;
     }
-    for (int j = 0; j < N; j++) a[j] = MOD_MUL((int64_t) a[j] * inv_n, q);
 }
+
+/**
+ * Unloads packed polynomial from memory.
+ */
+void unload_memory(int64_t* a) {
+    for (int k = 0; k < C; k++) {
+        for (int j = 0; j < N / (4 * C); j++) {
+            a[k * (N / (4 * C)) + j] = memory[k][0][j];
+            a[k * (N / (4 * C)) + j + (N / 4)] = memory[k][1][j];
+        }
+    }
+}
+
+/**
+ * Unloads packed polynomial from memory after ntt.
+ */
+void unload_after_ntt(int64_t* a) {
+    for (int k = 0; k < C; k++) {
+        for (int j = 0; j < N / (4 * C); j++) {
+            a[k * (N / (2 * C)) + 2 * j] = memory[k][0][j];
+            a[k * (N / (2 * C)) + 2 * j + 1] = memory[k][1][j];
+        }
+    }
+}
+
+/**
+ * Simulates multi-core packed NTT for contents in memory variable.
+ */
+void ntt_multi_packed(int32_t q, int32_t* psis) {
+    int32_t t = N / 2;
+    for (int m = 1; m < N/2; m *= 2) {
+        t /= 2;
+
+        /*  We only simulate the multi-core aspect. Therefor, the following for-loop iteratively 
+            calculates the results for each core and saves them in the router_input. The router will write
+            the results into their corresponding memory-location. 
+        */
+        for (int k = 0; k < C; k++) {
+
+            if (t > N / (4 * C)) {
+                int32_t w = psis[m + (k * C) / t];
+                for (int j = 0; j < N / (4 * C); j++) {
+                    int32_t u1 = get_first(memory[k][0][j]);
+                    int32_t v1 = MOD_MUL((int64_t) w * get_second(memory[k][0][j]), q);
+                    int32_t u2 = get_first(memory[k][1][j]);
+                    int32_t v2 = MOD_MUL((int64_t) w * get_second(memory[k][1][j]), q);
+                    int32_t r1 = MOD_ADD(u1 + v1, q);
+                    int32_t r2 = MOD_SUB(u1 - v1, q);
+                    int32_t r3 = MOD_ADD(u2 + v2, q);
+                    int32_t r4 = MOD_SUB(u2 - v2, q);
+                    router_input[k][j][0] = r1;
+                    router_input[k][j][1] = r2;
+                    router_input[k][j][2] = r3;
+                    router_input[k][j][3] = r4;
+                }
+            } else {
+                for (int i = 0; i < m / C; i++) {
+                    int32_t w = psis[m + (k * m) / C + i];
+                    int j1 = i * t;
+                    int j2 = j1 + t - 1;
+                    for (int j = j1; j <= j2; j++) {
+                        int32_t u1 = get_first(memory[k][0][j]);
+                        int32_t v1 = MOD_MUL((int64_t) w * get_second(memory[k][0][j]), q);
+                        int32_t u2 = get_first(memory[k][1][j]);
+                        int32_t v2 = MOD_MUL((int64_t) w * get_second(memory[k][1][j]), q);
+                        int32_t r1 = MOD_ADD(u1 + v1, q);
+                        int32_t r2 = MOD_SUB(u1 - v1, q);
+                        int32_t r3 = MOD_ADD(u2 + v2, q);
+                        int32_t r4 = MOD_SUB(u2 - v2, q);
+                        router_input[k][j][0] = r1;
+                        router_input[k][j][1] = r2;
+                        router_input[k][j][2] = r3;
+                        router_input[k][j][3] = r4;
+                    }
+                }
+            }
+
+        }
+
+        // Routing algorithm. Will be its own module on the FPGA.
+        for (int k = 0; k < C; k++) {
+            for (int j = 0; j < N / (4 * C); j++) {
+                if (t > N / (4 * C)) {
+                    if (((k * 2 * m) / C) % 2 == 0) {
+                        memory[k][0][j] = pack_single(router_input[k][j][0], router_input[k][j][2]);
+                        memory[k][1][j] = pack_single(router_input[k + ((2 * t * C) / N)][j][0], router_input[k + ((2 * t * C) / N)][j][2]);
+                    } else {
+                        memory[k][0][j] = pack_single(router_input[k - ((2 * t * C) / N)][j][1], router_input[k - ((2 * t * C) / N)][j][3]);
+                        memory[k][1][j] = pack_single(router_input[k][j][1], router_input[k][j][3]);    
+                    }
+                } else {
+                    if (t != 1) {
+                        if (j % t < t/2) {
+                            memory[k][0][j] = pack_single(router_input[k][j][0], router_input[k][j][2]);
+                            memory[k][0][j + t/2] = pack_single(router_input[k][j][1], router_input[k][j][3]);
+                        } else {
+                            memory[k][1][j - t/2] = pack_single(router_input[k][j][0], router_input[k][j][2]);
+                            memory[k][1][j] = pack_single(router_input[k][j][1], router_input[k][j][3]);
+                        }
+                    } else {
+                        memory[k][0][j] = pack_single(router_input[k][j][0], router_input[k][j][2]);
+                        memory[k][1][j] = pack_single(router_input[k][j][1], router_input[k][j][3]);
+                    }
+                }
+            }
+        }
+    }
+
+    // Again for simulation purposes
+    // We write diretly to memory, as no complex reordering is required
+    for (int k = 0; k < C; k++) {
+
+        for (int j = 0; j < N / (4 * C); j++) {
+            int32_t w1 = psis[N/2 + k * N / (2 * C) + 2 * j];
+            int32_t w2 = psis[N/2 + k * N / (2 * C) + 2 * j + 1];
+            int32_t u1 = get_first(memory[k][0][j]);
+            int32_t v1 = MOD_MUL((int64_t) w1 * get_second(memory[k][0][j]), q);
+            int32_t u2 = get_first(memory[k][1][j]);
+            int32_t v2 = MOD_MUL((int64_t) w2 * get_second(memory[k][1][j]), q);
+            int32_t r1 = MOD_ADD(u1 + v1, q);
+            int32_t r2 = MOD_SUB(u1 - v1, q);
+            int32_t r3 = MOD_ADD(u2 + v2, q);
+            int32_t r4 = MOD_SUB(u2 - v2, q);
+            memory[k][0][j] = pack_single(r1, r2);
+            memory[k][1][j] = pack_single(r3, r4);
+        }
+
+    }
+}
+
+
+//////////////////////////////
+// PACKING HELPER FUNCTIONS //
+//////////////////////////////
 
 /**
  * Packs two 30-bit coefficients into one 60-bit word, with a1 in the lower significance and
@@ -405,6 +675,12 @@ void unpack_after_ntt(int64_t* g, int32_t* a) {
     }
 }
 
+
+
+//////////////////////
+// HELPER FUNCTIONS //
+//////////////////////
+
 /**
  * Bit-reverses i, which is of length n
  */
@@ -431,6 +707,12 @@ int32_t* brv_powers(int32_t p, int32_t q, int32_t n) {
     }
     return brv_pwr;
 }
+
+
+
+//////////////////////
+// MODULO FUNCTIONS //
+//////////////////////
 
 /**
  * Calculates a mod q naively.
