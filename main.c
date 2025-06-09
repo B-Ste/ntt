@@ -528,7 +528,7 @@ void ntt_multi_packed(int32_t q, int32_t* psis) {
         for (int k = 0; k < C; k++) {
 
             if (t > N / (4 * C)) {
-                int32_t w = psis[m + (k * C) / t];
+                int32_t w = psis[m + (k * m) / C];
                 for (int j = 0; j < N / (4 * C); j++) {
                     int32_t u1 = get_first(memory[k][0][j]);
                     int32_t v1 = MOD_MUL((int64_t) w * get_second(memory[k][0][j]), q);
@@ -601,8 +601,8 @@ void ntt_multi_packed(int32_t q, int32_t* psis) {
     for (int k = 0; k < C; k++) {
 
         for (int j = 0; j < N / (4 * C); j++) {
-            int32_t w1 = psis[N/2 + k * N / (2 * C) + 2 * j];
-            int32_t w2 = psis[N/2 + k * N / (2 * C) + 2 * j + 1];
+            int32_t w1 = psis[N/2 + (k * N / 2) / C + 2 * j];
+            int32_t w2 = psis[N/2 + (k * N / 2) / C + 2 * j + 1];
             int32_t u1 = get_first(memory[k][0][j]);
             int32_t v1 = MOD_MUL((int64_t) w1 * get_second(memory[k][0][j]), q);
             int32_t u2 = get_first(memory[k][1][j]);
