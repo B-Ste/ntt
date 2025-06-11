@@ -547,8 +547,7 @@ void ntt_multi_packed(int32_t q, int32_t* psis) {
             } else {
                 if (k % 2 == 0) {
                     for (int i = 0; i < m / C; i++) {
-                        int index = m / C > 1 ? m + k * m / C + 2 * i : m + k;
-                        int32_t w = psis[index];
+                        int32_t w = psis[m + k * m / C + 2 * i];
                         int j1 = i * t;
                         int j2 = j1 + t - 1;
                         for (int j = j1; j <= j2; j++) {
@@ -568,8 +567,7 @@ void ntt_multi_packed(int32_t q, int32_t* psis) {
                     }
                 } else {
                     for (int i = 0; i < m / C; i++) {
-                        int index = m / C > 1 ? m + (k - 1) * m / C + 2 * i + 1 : m + k;
-                        int32_t w = psis[index];
+                        int32_t w = psis[m + (k - 1) * m / C + 2 * i + 1];
                         int j1 = i * t;
                         int j2 = j1 + t - 1;
                         for (int j = j1 + t / 2; j <= j2; j++) {
