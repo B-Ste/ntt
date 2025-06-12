@@ -56,10 +56,17 @@ int packing_test();
 int correctness_test_packed_ntt();
 int correctness_test_multi_packed_ntt();
 int memory_test();
+int print_pos_coefficient_file(int);
+int print_neg_coefficient_file(int);
 
 int main(int argc, char const *argv[]) {
+    if (argc == 3) {
+        int q = strtol(argv[2], NULL, 10);
+        if (*argv[1] == 'p') return print_pos_coefficient_file(q);
+        else return print_neg_coefficient_file(q); 
+    }
     if (argc != 1) {
-        printf("This program is run without arguments.\n");
+        printf("Run ntt_bench <q> to create ntt coefficient-file.\n");
         return 1;
     }
 
@@ -338,6 +345,28 @@ int correctness_test_multi_packed_ntt() {
         printf("Passed all correctness runs on correctness test for multi-core packed NTT.\n");
         return 0;
     }
+}
+
+int print_coefficient_file(int32_t* psi, int q) {
+    if (q < 0 || q > 12) {
+        printf("0 <= q < 13\n");
+        return 1;
+    }
+    int32_t* psis = brv_powers(psi[q], modulus[q], N);
+    printf("memory_initialization_radix=10;\n");
+    printf("memory_initialization_vector=\n");
+    for (int i = 0; i < N - 1; i++) printf("%i,\n", psis[i]);
+    printf("%i;\n", psis[N - q]);
+    free(psis);
+    return 0;
+}
+
+int print_pos_coefficient_file(int q) {
+    return print_coefficient_file(psi, q);
+}
+
+int print_neg_coefficient_file(int q) {
+    return print_coefficient_file(psi_neg, q);
 }
 
 
