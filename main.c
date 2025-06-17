@@ -58,6 +58,7 @@ int correctness_test_multi_packed_ntt();
 int memory_test();
 int print_pos_coefficient_file(int);
 int print_neg_coefficient_file(int);
+int simulate_router_test();
 
 int main(int argc, char const *argv[]) {
     if (argc == 3) {
@@ -78,6 +79,7 @@ int main(int argc, char const *argv[]) {
     printf("4) correctness-test for packed NTT\n");
     printf("5) correctness-test for multi-core packed NTT\n");
     printf("6) correctness-test for memory load & unload\n");
+    printf("7) router simulation\n");
     printf("Selection: ");
     scanf("%d", &program_selection);
 
@@ -88,6 +90,7 @@ int main(int argc, char const *argv[]) {
     case 4: return correctness_test_packed_ntt();
     case 5: return correctness_test_multi_packed_ntt();
     case 6: return memory_test();
+    case 7: return simulate_router_test();
     default:
         printf("Unknown program. Exiting.\n");
         return 1;
@@ -367,6 +370,43 @@ int print_pos_coefficient_file(int q) {
 
 int print_neg_coefficient_file(int q) {
     return print_coefficient_file(psi_neg, q);
+}
+
+int simulate_router_test() {
+    int m;
+    printf("m: ");
+    scanf("%d", &m);
+    int t = 1024 / m;
+    int32_t router_input[C][4];
+    for (int i = 0; i < C; i++) {
+        router_input[i][0] = 4 * i;
+        router_input[i][1] = 4 * i + 1;
+        router_input[i][2] = 4 * i + 2;
+        router_input[i][3] = 4 * i + 3;
+    }
+    int32_t out[C][2][2];
+    for (int k = 0; k < C; k++) {
+        if (t > N / (4 * C)) {
+            if (((k * 2 * m) / C) % 2 == 0) {
+                out[k][0][0] = router_input[k][0];
+                out[k][0][1] = router_input[k][2];
+                out[k][1][0] = router_input[k + ((2 * t * C) / N)][0];
+                out[k][1][1] = router_input[k + ((2 * t * C) / N)][2];
+            } else {
+                out[k][1][0] = router_input[k][1];
+                out[k][1][1] = router_input[k][3];
+                out[k][0][0] = router_input[k - ((2 * t * C) / N)][1];
+                out[k][0][1] = router_input[k - ((2 * t * C) / N)][3];  
+            }
+        }
+    }
+    for (int i = 0; i < C; i++) {
+        printf("%i\n", out[i][0][0]);
+        printf("%i\n", out[i][0][1]);
+        printf("%i\n", out[i][1][0]);
+        printf("%i\n", out[i][1][1]);
+    }
+    return 0;
 }
 
 
