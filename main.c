@@ -376,7 +376,11 @@ int simulate_router_test() {
     int m;
     printf("m: ");
     scanf("%d", &m);
-    int t = 1024 / m;
+    int t = -1; //1024 / m;
+    int address_0 = 10;
+    //printf("address_0: ");
+    //scanf("%d", &address_0);
+    int address_1 = 10; //address_0 < t/2 ? address_0 + t/2 : address_0 - t/2;
     int32_t router_input[C][4];
     for (int i = 0; i < C; i++) {
         router_input[i][0] = 4 * i;
@@ -385,6 +389,7 @@ int simulate_router_test() {
         router_input[i][3] = 4 * i + 3;
     }
     int32_t out[C][2][2];
+    int32_t address_out[C][2];
     for (int k = 0; k < C; k++) {
         if (t > N / (4 * C)) {
             if (((k * 2 * m) / C) % 2 == 0) {
@@ -398,13 +403,65 @@ int simulate_router_test() {
                 out[k][0][0] = router_input[k - ((2 * t * C) / N)][1];
                 out[k][0][1] = router_input[k - ((2 * t * C) / N)][3];  
             }
+        } else {
+            if (t < 0) {
+                out[k][0][0] = router_input[k][0];
+                out[k][0][1] = router_input[k][1];
+                out[k][1][0] = router_input[k][2];
+                out[k][1][1] = router_input[k][3];
+                address_out[k][0] = address_0;
+                address_out[k][1] = address_1;
+            } else if (t != 1) {
+                if (k % 2 == 0) {
+                    if (address_0 % t < t/2) {
+                        out[k][0][0] = router_input[k][0];
+                        out[k][0][1] = router_input[k][2];
+                        out[k + 1][0][0] = router_input[k][1];
+                        out[k + 1][0][1] = router_input[k][3];
+                        address_out[k][0] = address_0;
+                        address_out[k + 1][0] = address_0;
+                    } else {
+                        out[k][1][0] = router_input[k][0];
+                        out[k][1][1] = router_input[k][2];
+                        out[k + 1][1][0] = router_input[k][1];
+                        out[k + 1][1][1] = router_input[k][3];
+                        address_out[k][1] = address_0 - t/2;
+                        address_out[k + 1][1] = address_0 - t/2;
+                    }
+                } else {
+                    if (address_1 % t < t/2) {
+                        out[k - 1][0][0] = router_input[k][0];
+                        out[k - 1][0][1] = router_input[k][2];
+                        out[k][0][0] = router_input[k][1];
+                        out[k][0][1] = router_input[k][3];
+                        address_out[k - 1][0] = address_1 + t/2;
+                        address_out[k][0] = address_1 + t/2;
+                    } else {
+                        out[k - 1][1][0] = router_input[k][0];
+                        out[k - 1][1][1] = router_input[k][2];
+                        out[k][1][0] = router_input[k][1];
+                        out[k][1][1] = router_input[k][3];
+                        address_out[k - 1][1] = address_1;
+                        address_out[k][1] = address_1;
+                    }
+                }
+            } else {
+                out[k][0][0] = router_input[k][0];
+                out[k][0][1] = router_input[k][2];
+                out[k][1][0] = router_input[k][1];
+                out[k][1][1] = router_input[k][3];
+                address_out[k][0] = address_0;
+                address_out[k][1] = address_1;
+            }
         }
     }
     for (int i = 0; i < C; i++) {
         printf("%i\n", out[i][0][0]);
         printf("%i\n", out[i][0][1]);
+        printf("%i\n", address_out[i][0]);
         printf("%i\n", out[i][1][0]);
         printf("%i\n", out[i][1][1]);
+        printf("%i\n", address_out[i][1]);
     }
     return 0;
 }
