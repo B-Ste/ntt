@@ -59,7 +59,7 @@ int memory_test();
 int print_pos_coefficient_file(int);
 int print_neg_coefficient_file(int);
 int simulate_router_test();
-int specified_input_test();
+int create_simulation_test_files();
 
 int main(int argc, char const *argv[]) {
     if (argc == 3) {
@@ -81,7 +81,7 @@ int main(int argc, char const *argv[]) {
     printf("5) correctness-test for multi-core packed NTT\n");
     printf("6) correctness-test for memory load & unload\n");
     printf("7) router simulation\n");
-    printf("8) output ntt result for specified input\n");
+    printf("8) create processor simulation test files\n");
     printf("Selection: ");
     scanf("%d", &program_selection);
 
@@ -93,7 +93,7 @@ int main(int argc, char const *argv[]) {
     case 5: return correctness_test_multi_packed_ntt();
     case 6: return memory_test();
     case 7: return simulate_router_test();
-    case 8: return specified_input_test();
+    case 8: return create_simulation_test_files();
     default:
         printf("Unknown program. Exiting.\n");
         return 1;
@@ -469,22 +469,29 @@ int simulate_router_test() {
     return 0;
 }
 
-int specified_input_test() {
-    int k = 0;
+int create_simulation_test_files() {
+    int q_index;
+    printf("Index of prime number: ");
+    scanf("%d", &q_index);
     int32_t* a = calloc(N, sizeof(int32_t));
-    int32_t* b = calloc(N, sizeof(int32_t));
-    int32_t q = modulus[k];
-    int32_t psi_p = psi[k];
+    int32_t q = modulus[q_index];
+    int32_t psi_p = psi[q_index];
     int32_t* psis = brv_powers(psi_p, q, N);
-    int64_t* g = calloc(N/2, sizeof(int64_t));
-    for (int i = 0; i < N/2; i++) a[i] = i;
-    pack(a, g);
-    load_memory(g);
-    ntt_multi_packed(q, psis);
-    unload_after_ntt(g);
-    unpack_after_ntt(g, b);
-    //for (int i = 0; i < N; i++) printf("%i\n", b[i]);
-    free(a); free(b); free(psis); free(g);
+    unsigned int seed1 = clock();
+    srand(time(NULL));
+    FILE* input = fopen("input.txt", "w");
+    for (int i = 0; i < N; i++) {
+        a[i] = mod_barrett(rand_r(&seed1), q);
+        fprintf(input, "%i\n", a[i]);
+    }
+    fclose(input);
+    ntt(q, psis, a);
+    FILE* output = fopen("output.txt", "w");
+    for (int i = 0; i < N; i++) {
+        fprintf(output, "%i\n", a[i]);
+    }
+    fclose(output);
+    free(a); free(psis);
     return 0;
 }
 
@@ -663,16 +670,24 @@ void unload_after_ntt(int64_t* a) {
 }
 
 /**
+ * Unloads packed polynomial from memory after ntt to fit the processors output.
+*/
+void unload_after_ntt_processor(int64_t* a) {
+    for (int j = 0; j < N / (4 * C); j++) {
+        for (int k = 0; k < C; k++) {
+            a[j * 2 * C + 2 * k] = memory[k][0][j];
+            a[j * 2 * C + 2 * k + 1] = memory[k][1][j];
+        }
+    }
+}
+
+/**
  * Simulates multi-core packed NTT for contents in memory variable.
  */
 void ntt_multi_packed(int32_t q, int32_t* psis) {
     int32_t t = N / 2;
     for (int m = 1; m < N/2; m *= 2) {
         t /= 2;
-
-        printf("m: %i\n", m);
-        printf("up: %lli\n", memory[0][0][0]);
-        printf("down: %lli\n", memory[0][1][0]);
 
         /*  We only simulate the multi-core aspect. Therefor, the following for-loop iteratively 
             calculates the results for each core and saves them in the router_input. The router will write
@@ -755,11 +770,6 @@ void ntt_multi_packed(int32_t q, int32_t* psis) {
             }
 
         }
-
-        printf("%i\n", router_input[0][0][0]);
-        printf("%i\n", router_input[0][0][1]);
-        printf("%i\n", router_input[0][0][2]);
-        printf("%i\n", router_input[0][0][3]);
 
         // Routing algorithm. Will be its own module on the FPGA.
         for (int k = 0; k < C; k++) {
