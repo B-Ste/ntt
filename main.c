@@ -41,6 +41,7 @@ void unpack_after_ntt(int64_t*, int32_t*);
 void load_memory(int64_t*);
 void unload_memory(int64_t*);
 void unload_after_ntt(int64_t*);
+void unload_after_ntt_processor(int64_t*);
 int64_t pack_single(int32_t, int32_t);
 int32_t get_first(int64_t);
 int32_t get_second(int64_t);
@@ -477,21 +478,28 @@ int create_simulation_test_files() {
     int32_t q = modulus[q_index];
     int32_t psi_p = psi[q_index];
     int32_t* psis = brv_powers(psi_p, q, N);
+    int64_t* g = calloc(N/2, sizeof(int64_t));
     unsigned int seed1 = clock();
     srand(time(NULL));
-    FILE* input = fopen("input.txt", "w");
     for (int i = 0; i < N; i++) {
         a[i] = mod_barrett(rand_r(&seed1), q);
-        fprintf(input, "%i\n", a[i]);
+    }
+    pack(a, g);
+    FILE* input = fopen("input.txt", "w");
+    for (int i = 0; i < N/2; i++) {
+        fprintf(input, "%lu\n", g[i]);
     }
     fclose(input);
-    ntt(q, psis, a);
+    load_memory(g);
+    ntt_multi_packed(q, psis);
+    unload_after_ntt_processor(g);
+    unpack_after_ntt(g, a);
     FILE* output = fopen("output.txt", "w");
     for (int i = 0; i < N; i++) {
         fprintf(output, "%i\n", a[i]);
     }
     fclose(output);
-    free(a); free(psis);
+    free(a); free(psis); free(g);
     return 0;
 }
 
