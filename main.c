@@ -61,6 +61,7 @@ int print_pos_coefficient_file(int);
 int print_neg_coefficient_file(int);
 int simulate_router_test();
 int create_simulation_test_files();
+int print_last_psis();
 
 int main(int argc, char const *argv[]) {
     if (argc == 3) {
@@ -363,7 +364,7 @@ int print_coefficient_file(int32_t* psi, int q) {
     printf("memory_initialization_radix=10;\n");
     printf("memory_initialization_vector=\n");
     for (int i = 0; i < N - 1; i++) printf("%i,\n", psis[i]);
-    printf("%i;\n", psis[N - q]);
+    printf("%i;\n", psis[N - 1]);
     free(psis);
     return 0;
 }
