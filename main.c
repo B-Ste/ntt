@@ -34,6 +34,7 @@ void nwc_ntt(int32_t, int32_t*, int32_t*, int32_t, int32_t*, int32_t*, int32_t*)
 void ntt(int32_t, int32_t*, int32_t*);
 void ntt_packed(int32_t, int32_t*, int64_t*);
 void ntt_multi_packed(int32_t, int32_t*);
+void intt_multi_packed(int32_t, int32_t, int32_t*);
 void intt(int32_t, int32_t, int32_t*, int32_t*);
 void pack(int32_t*, int64_t*);
 void unpack(int64_t*, int32_t*);
@@ -61,7 +62,7 @@ int print_pos_coefficient_file(int);
 int print_neg_coefficient_file(int);
 int simulate_router_test();
 int create_simulation_test_files();
-int print_last_psis();
+int test_multi_packed_intt();
 
 int main(int argc, char const *argv[]) {
     if (argc == 3) {
@@ -84,6 +85,7 @@ int main(int argc, char const *argv[]) {
     printf("6) correctness-test for memory load & unload\n");
     printf("7) router simulation\n");
     printf("8) create processor simulation test files\n");
+    printf("9) correctness-test multi-core packed INTT\n");
     printf("Selection: ");
     scanf("%d", &program_selection);
 
@@ -96,6 +98,7 @@ int main(int argc, char const *argv[]) {
     case 6: return memory_test();
     case 7: return simulate_router_test();
     case 8: return create_simulation_test_files();
+    case 9: return test_multi_packed_intt();
     default:
         printf("Unknown program. Exiting.\n");
         return 1;
@@ -504,6 +507,53 @@ int create_simulation_test_files() {
     return 0;
 }
 
+int test_multi_packed_intt() {
+    int correctness_runs;
+    printf("Number of correctness-runs: ");
+    scanf("%d", &correctness_runs);
+
+    unsigned int seed1 = clock();
+    int k = 0;
+    int fail = 0;
+    for (int j = 0; j < correctness_runs; j++) {
+        int32_t* a = calloc(N, sizeof(int32_t));
+        int32_t* b = calloc(N, sizeof(int32_t));
+        int32_t q = modulus[k];
+        int32_t psi_p = psi[k];
+        int32_t psi_n = psi_neg[k];
+        int32_t* psis = brv_powers(psi_p, q, N);
+        int32_t* psis_neg = brv_powers(psi_n, q, N);
+        int64_t* g = calloc(N/2, sizeof(int64_t));
+        srand(time(NULL));
+        for (int i = 0; i < N; i++) {
+            a[i] = mod_barrett(rand_r(&seed1), q);
+        }
+        pack(a, g);
+        load_memory(g);
+        ntt_multi_packed(q, psis);
+        intt_multi_packed(q, n_neg[k], psis_neg);
+        unload_memory(g);
+        unpack(g, b);
+        for (int i = 0; i < N; i++) {
+            if (a[i] != b[i]) {
+                printf("Failed correctness run %i with k = %i at i = %i\n", j, k, i);
+                fail = 1;
+                break;
+            }
+        }
+        free(a); free(b); free(g); free(psis); free(psis_neg);
+        if (k == NUM_Q - 1) k = 0;
+        else k++;
+    }
+    if (fail) {
+        printf("Failed correctness runs on correctness test for multi-core packed INTT.\n");
+        return 1;
+    } else {
+        printf("Passed all correctness runs on correctness test for multi-core packed INTT.\n");
+        return 0;
+    }
+}
+
 
 
 ///////////////////
@@ -844,6 +894,179 @@ void ntt_multi_packed(int32_t q, int32_t* psis) {
             memory[k][1][j] = pack_single(r3, r4);
         }
 
+    }
+}
+
+void intt_multi_packed(int32_t q, int32_t n_m, int32_t* psis) {
+    for (int k = 0; k < C; k++) {
+
+        for (int j = 0; j < N / (4 * C); j++) {
+            int32_t w1, w2;
+            if (k % 2 == 0) {
+                w1 = psis[N/2 + (k * N / 2) / C + 4 * j];
+                w2 = psis[N/2 + (k * N / 2) / C + 4 * j + 1];
+            } else {
+                w1 = psis[N/2 + ((k - 1) * N / 2) / C + 4 * j + 2];
+                w2 = psis[N/2 + ((k - 1) * N / 2) / C + 4 * j + 3];
+            }
+            int32_t u1 = get_first(memory[k][0][j]);
+            int32_t v1 = get_second(memory[k][0][j]);
+            int32_t u2 = get_first(memory[k][1][j]);
+            int32_t v2 = get_second(memory[k][1][j]);
+            int32_t r1 = MOD_ADD(u1 + v1, q);
+            int32_t r2_p = MOD_SUB(u1 - v1, q);
+            int32_t r2 = MOD_MUL((int64_t) w1 * r2_p, q);
+            int32_t r3 = MOD_ADD(u2 + v2, q);
+            int32_t r4_p = MOD_SUB(u2 - v2, q);
+            int32_t r4 = MOD_MUL((int64_t) w2 * r4_p, q);
+            memory[k][0][j] = pack_single(r1, r3);
+            memory[k][1][j] = pack_single(r2, r4);
+            router_input[k][j][0] = r1;
+            router_input[k][j][1] = r2;
+            router_input[k][j][2] = r3;
+            router_input[k][j][3] = r4;
+        }
+
+    }
+
+    int t = 1;
+    for (int m = N/2; m > 1; m /= 2) {
+
+        for (int k = 0; k < C; k++) {
+
+            if (t < N / (4 * C)) {
+                if (k % 2 == 0) {
+                    for (int i = 0; i < m / C; i++) {
+                        int32_t w = psis[m/2 + k * m / (2 * C) + 2 * i];
+                        int j1 = i * t;
+                        int j2 = j1 + t - 1;
+                        for (int j = j1; j <= j2; j++) {
+                            int32_t u1 = get_first(memory[k][0][j]);
+                            int32_t v1 = get_second(memory[k][0][j]);
+                            int32_t u2 = get_first(memory[k][1][j]);
+                            int32_t v2 = get_second(memory[k][1][j]);
+                            int32_t r1 = MOD_ADD(u1 + v1, q);
+                            int32_t r2_p = MOD_SUB(u1 - v1, q);
+                            int32_t r2 = MOD_MUL((int64_t) w * r2_p, q);
+                            int32_t r3 = MOD_ADD(u2 + v2, q);
+                            int32_t r4_p = MOD_SUB(u2 - v2, q);
+                            int32_t r4 = MOD_MUL((int64_t) w * r4_p, q);
+                            router_input[k][j][0] = r1;
+                            router_input[k][j][1] = r2;
+                            router_input[k][j][2] = r3;
+                            router_input[k][j][3] = r4;
+                        }
+                    }
+                } else {
+                    for (int i = 0; i < m / C; i++) {
+                        int32_t w = psis[m/2 + (k - 1) * m / (2 * C) + 2 * i + 1];
+                        int j1 = i * t;
+                        int j2 = j1 + t - 1;
+                        for (int j = j1 + t / 2; j <= j2; j++) {
+                            int32_t u1 = get_first(memory[k][0][j]);
+                            int32_t v1 = get_second(memory[k][0][j]);
+                            int32_t u2 = get_first(memory[k][1][j]);
+                            int32_t v2 = get_second(memory[k][1][j]);
+                            int32_t r1 = MOD_ADD(u1 + v1, q);
+                            int32_t r2_p = MOD_SUB(u1 - v1, q);
+                            int32_t r2 = MOD_MUL((int64_t) w * r2_p, q);
+                            int32_t r3 = MOD_ADD(u2 + v2, q);
+                            int32_t r4_p = MOD_SUB(u2 - v2, q);
+                            int32_t r4 = MOD_MUL((int64_t) w * r4_p, q);
+                            router_input[k][j][0] = r1;
+                            router_input[k][j][1] = r2;
+                            router_input[k][j][2] = r3;
+                            router_input[k][j][3] = r4;
+                        }
+                        for (int j = j1; j < j1 + t/2; j++) {
+                            int32_t u1 = get_first(memory[k][0][j]);
+                            int32_t v1 = get_second(memory[k][0][j]);
+                            int32_t u2 = get_first(memory[k][1][j]);
+                            int32_t v2 = get_second(memory[k][1][j]);
+                            int32_t r1 = MOD_ADD(u1 + v1, q);
+                            int32_t r2_p = MOD_SUB(u1 - v1, q);
+                            int32_t r2 = MOD_MUL((int64_t) w * r2_p, q);
+                            int32_t r3 = MOD_ADD(u2 + v2, q);
+                            int32_t r4_p = MOD_SUB(u2 - v2, q);
+                            int32_t r4 = MOD_MUL((int64_t) w * r4_p, q);
+                            router_input[k][j][0] = r1;
+                            router_input[k][j][1] = r2;
+                            router_input[k][j][2] = r3;
+                            router_input[k][j][3] = r4;
+                        }
+                    }
+                }
+            } else {
+                int32_t w = psis[m/2 + (k * m) / (2 * C)];
+                for (int j = 0; j < N / (4 * C); j++) {
+                    int32_t u1 = get_first(memory[k][0][j]);
+                    int32_t v1 = get_second(memory[k][0][j]);
+                    int32_t u2 = get_first(memory[k][1][j]);
+                    int32_t v2 = get_second(memory[k][1][j]);
+                    int32_t r1 = MOD_ADD(u1 + v1, q);
+                    int32_t r2_p = MOD_SUB(u1 - v1, q);
+                    int32_t r2 = MOD_MUL((int64_t) w * r2_p, q);
+                    int32_t r3 = MOD_ADD(u2 + v2, q);
+                    int32_t r4_p = MOD_SUB(u2 - v2, q);
+                    int32_t r4 = MOD_MUL((int64_t) w * r4_p, q);
+                    router_input[k][j][0] = r1;
+                    router_input[k][j][1] = r2;
+                    router_input[k][j][2] = r3;
+                    router_input[k][j][3] = r4;
+                }
+            }
+
+        }
+
+        // Routing
+        for (int k = 0; k < C; k++) {
+            for (int j = 0; j < N / (4 * C); j++) {
+                if (t < N / (4 * C)) {
+                    if (k % 2 == 0) {
+                        if (j % (2 * t) < t) {
+                            memory[k][0][j] = pack_single(router_input[k][j][0], router_input[k + 1][j][0]);
+                            memory[k][0][j + t] = pack_single(router_input[k][j][2], router_input[k + 1][j][2]);
+                            memory[k][1][j] = pack_single(router_input[k][j][1], router_input[k + 1][j][1]);
+                            memory[k][1][j + t] = pack_single(router_input[k][j][3], router_input[k + 1][j][3]);
+                        } else {
+                            memory[k + 1][0][j - t] = pack_single(router_input[k][j][0], router_input[k + 1][j][0]);
+                            memory[k + 1][0][j] = pack_single(router_input[k][j][2], router_input[k + 1][j][2]);
+                            memory[k + 1][1][j - t] = pack_single(router_input[k][j][1], router_input[k + 1][j][1]);
+                            memory[k + 1][1][j] = pack_single(router_input[k][j][3], router_input[k + 1][j][3]);
+                        }
+                    }
+                } else {
+                    if (m != 2) {
+                        if (((k * m) / (2 * C)) % 2 == 0) {
+                            memory[k][0][j] = pack_single(router_input[k][j][0], router_input[k + ((4 * t * C) / N)][j][0]);
+                            memory[k][1][j] = pack_single(router_input[k][j][1], router_input[k + ((4 * t * C) / N)][j][1]);
+                        } else {
+                            memory[k][0][j] = pack_single(router_input[k - ((4 * t * C) / N)][j][2], router_input[k][j][2]);
+                            memory[k][1][j] = pack_single(router_input[k - ((4 * t * C) / N)][j][3], router_input[k][j][3]);
+                        }
+                    } else {
+                        memory[k][0][j] = pack_single(router_input[k][j][0], router_input[k][j][1]);
+                        memory[k][1][j] = pack_single(router_input[k][j][2], router_input[k][j][3]);
+                    }
+                }
+            }
+        }
+
+        t *= 2;
+
+    }
+
+    /* Multiplication with n^(-1), here done sequentially, in FPGA done with 4 * C parallel multipliers, as 
+    every core outputs 4 coefficients every cycle. */ 
+    for (int k = 0; k < C; k++) {
+        for (int j = 0; j < N / (4 * C); j++) {
+            int32_t u1 = MOD_MUL((int64_t) n_m * get_first(memory[k][0][j]), q);
+            int32_t v1 = MOD_MUL((int64_t) n_m * get_second(memory[k][0][j]), q);
+            int32_t u2 = MOD_MUL((int64_t) n_m * get_first(memory[k][1][j]), q);
+            int32_t v2 = MOD_MUL((int64_t) n_m * get_second(memory[k][1][j]), q);
+            memory[k][0][j] = pack_single(u1, v1);
+            memory[k][1][j] = pack_single(u2, v2);
+        }
     }
 }
 
