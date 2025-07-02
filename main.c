@@ -921,10 +921,6 @@ void intt_multi_packed(int32_t q, int32_t n_m, int32_t* psis) {
             int32_t r4 = MOD_MUL((int64_t) w2 * r4_p, q);
             memory[k][0][j] = pack_single(r1, r3);
             memory[k][1][j] = pack_single(r2, r4);
-            router_input[k][j][0] = r1;
-            router_input[k][j][1] = r2;
-            router_input[k][j][2] = r3;
-            router_input[k][j][3] = r4;
         }
 
     }
@@ -1025,14 +1021,18 @@ void intt_multi_packed(int32_t q, int32_t n_m, int32_t* psis) {
                     if (k % 2 == 0) {
                         if (j % (2 * t) < t) {
                             memory[k][0][j] = pack_single(router_input[k][j][0], router_input[k + 1][j][0]);
-                            memory[k][0][j + t] = pack_single(router_input[k][j][2], router_input[k + 1][j][2]);
                             memory[k][1][j] = pack_single(router_input[k][j][1], router_input[k + 1][j][1]);
-                            memory[k][1][j + t] = pack_single(router_input[k][j][3], router_input[k + 1][j][3]);
                         } else {
                             memory[k + 1][0][j - t] = pack_single(router_input[k][j][0], router_input[k + 1][j][0]);
-                            memory[k + 1][0][j] = pack_single(router_input[k][j][2], router_input[k + 1][j][2]);
                             memory[k + 1][1][j - t] = pack_single(router_input[k][j][1], router_input[k + 1][j][1]);
-                            memory[k + 1][1][j] = pack_single(router_input[k][j][3], router_input[k + 1][j][3]);
+                        }
+                    } else {
+                        if (j % (2 * t) < t) {
+                            memory[k - 1][0][j + t] = pack_single(router_input[k - 1][j][2], router_input[k][j][2]);
+                            memory[k - 1][1][j + t] = pack_single(router_input[k - 1][j][3], router_input[k][j][3]);
+                        } else {
+                            memory[k][0][j] = pack_single(router_input[k - 1][j][2], router_input[k][j][2]);
+                            memory[k][1][j] = pack_single(router_input[k - 1][j][3], router_input[k][j][3]);
                         }
                     }
                 } else {
