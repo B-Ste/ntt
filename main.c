@@ -2,7 +2,7 @@
 #define BITLENGTH 12    // 2 ^ 12 = 4096
 #define NUM_Q 13
 #define L 30            // bit-length of moduli Q
-#define C 16            // number of cores
+#define C 4            // number of cores
 
 #ifdef BAR
     #define MOD_ADD(a, q) mod_addition(a, q)
@@ -936,7 +936,7 @@ void intt_multi_packed(int32_t q, int32_t n_m, int32_t* psis) {
 
             if (t < N / (4 * C)) {
                 if (k % 2 == 0) {
-                    for (int i = 0; i < m / C; i++) {
+                    for (int i = 0; i < m / (2 * C); i++) {
                         int32_t w = psis[m/2 + k * m / (2 * C) + 2 * i];
                         int j1 = i * t;
                         int j2 = j1 + t - 1;
@@ -958,7 +958,7 @@ void intt_multi_packed(int32_t q, int32_t n_m, int32_t* psis) {
                         }
                     }
                 } else {
-                    for (int i = 0; i < m / C; i++) {
+                    for (int i = 0; i < m / (2 * C); i++) {
                         int32_t w = psis[m/2 + (k - 1) * m / (2 * C) + 2 * i + 1];
                         int j1 = i * t;
                         int j2 = j1 + t - 1;
