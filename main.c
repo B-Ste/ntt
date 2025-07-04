@@ -958,23 +958,7 @@ void intt_multi_packed(int32_t q, int32_t n_m, int32_t* psis) {
                         int32_t w = psis[m/2 + (k - 1) * m / (2 * C) + 2 * i + 1];
                         int j1 = i * t;
                         int j2 = j1 + t - 1;
-                        for (int j = j1 + t / 2; j <= j2; j++) {
-                            int32_t u1 = get_first(memory[k][0][j]);
-                            int32_t v1 = get_second(memory[k][0][j]);
-                            int32_t u2 = get_first(memory[k][1][j]);
-                            int32_t v2 = get_second(memory[k][1][j]);
-                            int32_t r1 = MOD_ADD(u1 + v1, q);
-                            int32_t r2_p = MOD_SUB(u1 - v1, q);
-                            int32_t r2 = MOD_MUL((int64_t) w * r2_p, q);
-                            int32_t r3 = MOD_ADD(u2 + v2, q);
-                            int32_t r4_p = MOD_SUB(u2 - v2, q);
-                            int32_t r4 = MOD_MUL((int64_t) w * r4_p, q);
-                            router_input[k][j][0] = r1;
-                            router_input[k][j][1] = r2;
-                            router_input[k][j][2] = r3;
-                            router_input[k][j][3] = r4;
-                        }
-                        for (int j = j1; j < j1 + t/2; j++) {
+                        for (int j = j1; j <= j2; j++) {
                             int32_t u1 = get_first(memory[k][0][j]);
                             int32_t v1 = get_second(memory[k][0][j]);
                             int32_t u2 = get_first(memory[k][1][j]);
