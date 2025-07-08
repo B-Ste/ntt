@@ -2,7 +2,7 @@
 #define BITLENGTH 12    // 2 ^ 12 = 4096
 #define NUM_Q 13
 #define L 30            // bit-length of moduli Q
-#define C 4            // number of cores
+#define C 16            // number of cores
 
 #ifdef BAR
     #define MOD_ADD(a, q) mod_addition(a, q)
@@ -40,6 +40,7 @@ void pack(int32_t*, int64_t*);
 void unpack(int64_t*, int32_t*);
 void unpack_after_ntt(int64_t*, int32_t*);
 void load_memory(int64_t*);
+void load_memory_intt(int64_t*);
 void unload_memory(int64_t*);
 void unload_after_ntt(int64_t*);
 void unload_after_ntt_processor(int64_t*);
@@ -63,6 +64,9 @@ int print_neg_coefficient_file(int);
 int simulate_router_test();
 int create_simulation_test_files();
 int test_multi_packed_intt();
+int create_intt_simulation_test_files();
+
+int64_t memory[C][2][N / (4 * C)];
 
 int main(int argc, char const *argv[]) {
     if (argc == 3) {
@@ -86,6 +90,7 @@ int main(int argc, char const *argv[]) {
     printf("7) router simulation\n");
     printf("8) create processor simulation test files\n");
     printf("9) correctness-test multi-core packed INTT\n");
+    printf("10) create intt processor simulation files\n");
     printf("Selection: ");
     scanf("%d", &program_selection);
 
@@ -99,6 +104,7 @@ int main(int argc, char const *argv[]) {
     case 7: return simulate_router_test();
     case 8: return create_simulation_test_files();
     case 9: return test_multi_packed_intt();
+    case 10: return create_intt_simulation_test_files();
     default:
         printf("Unknown program. Exiting.\n");
         return 1;
@@ -554,6 +560,42 @@ int test_multi_packed_intt() {
     }
 }
 
+int create_intt_simulation_test_files() {
+    int q_index;
+    printf("Index of prime number: ");
+    scanf("%d", &q_index);
+    int32_t* a = calloc(N, sizeof(int32_t));
+    int32_t q = modulus[q_index];
+    int32_t psi_n = psi_neg[q_index];
+    int32_t* psis = brv_powers(psi_n, q, N);
+    int64_t* g = calloc(N/2, sizeof(int64_t));
+    unsigned int seed1 = clock();
+    srand(time(NULL));
+    for (int i = 0; i < N; i++) {
+        a[i] = mod_barrett(rand_r(&seed1), q);
+    }
+    pack(a, g);
+    FILE* input = fopen("input.txt", "w");
+    for (int i = 0; i < N/2; i++) {
+        fprintf(input, "%lu\n", g[i]);
+    }
+    fclose(input);
+    load_memory_intt(g);
+    intt_multi_packed(q, n_neg[q_index], psis);
+    FILE* output = fopen("output.txt", "w");
+    for (int j = 0; j < N / (4 * C); j++) {
+        for (int k = 0; k < C; k++) {
+            fprintf(output, "%0d\n", get_first(memory[k][0][j]));
+            fprintf(output, "%0d\n", get_second(memory[k][0][j]));
+            fprintf(output, "%0d\n", get_first(memory[k][1][j]));
+            fprintf(output, "%0d\n", get_second(memory[k][1][j]));
+        }
+    }
+    fclose(output);
+    free(a); free(psis); free(g);
+    return 0;
+}
+
 
 
 ///////////////////
@@ -687,7 +729,6 @@ void ntt_packed(int32_t q, int32_t* psis, int64_t* a) {
 // MULTICORE PACKED NTT SIMULATION //
 /////////////////////////////////////
 
-int64_t memory[C][2][N / (4 * C)];
 int32_t router_input[C][N / (4 * C)][4];
 
 /**
@@ -699,6 +740,21 @@ void load_memory(int64_t* a) {
             memory[k][0][j] = a[k * (N / (4 * C)) + j];
             memory[k][1][j] = a[k * (N / (4 * C)) + j + (N / 4)];
         }
+    }
+}
+
+/**
+ * Loads packed polynomial into memory so that intt can be performed.
+*/
+void load_memory_intt(int64_t* g) {
+    int i = 0;
+    int j = 0;
+    while (i < N / 2) {
+        for (int k = 0; k < C; k++) {
+            memory[k][0][j] = g[i++];
+            memory[k][1][j] = g[i++];
+        }
+        j++;
     }
 }
 
