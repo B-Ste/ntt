@@ -65,6 +65,7 @@ int simulate_router_test();
 int create_simulation_test_files();
 int test_multi_packed_intt();
 int create_intt_simulation_test_files();
+int create_nwc_simulation_test_files();
 
 int64_t memory[C][2][N / (4 * C)];
 
@@ -91,6 +92,7 @@ int main(int argc, char const *argv[]) {
     printf("8) create processor simulation test files\n");
     printf("9) correctness-test multi-core packed INTT\n");
     printf("10) create intt processor simulation files\n");
+    printf("11) create nwc processor simulation test files\n");
     printf("Selection: ");
     scanf("%d", &program_selection);
 
@@ -105,6 +107,7 @@ int main(int argc, char const *argv[]) {
     case 8: return create_simulation_test_files();
     case 9: return test_multi_packed_intt();
     case 10: return create_intt_simulation_test_files();
+    case 11: return create_nwc_simulation_test_files();
     default:
         printf("Unknown program. Exiting.\n");
         return 1;
@@ -593,6 +596,48 @@ int create_intt_simulation_test_files() {
     }
     fclose(output);
     free(a); free(psis); free(g);
+    return 0;
+}
+
+int create_nwc_simulation_test_files() {
+    int q_index;
+    printf("Index of prime number: ");
+    scanf("%d", &q_index);
+    int32_t* a = calloc(N, sizeof(int32_t));
+    int32_t* b = calloc(N, sizeof(int32_t));
+    int32_t q = modulus[q_index];
+    int32_t psi_p = psi[q_index];
+    int32_t psi_n = psi_neg[q_index];
+    int32_t* psis = brv_powers(psi_p, q, N);
+    int32_t* psis_n = brv_powers(psi_n, q, N);
+    int64_t* g1 = calloc(N/2, sizeof(int64_t));
+    int64_t* g2 = calloc(N/2, sizeof(int64_t));
+    unsigned int seed1 = clock();
+    srand(time(NULL));
+    for (int i = 0; i < N; i++) {
+        a[i] = mod_barrett(rand_r(&seed1), q);
+        b[i] = mod_barrett(rand_r(&seed1), q);
+    }
+    pack(a, g1);
+    pack(b, g2);
+    FILE* input1 = fopen("input1.txt", "w");
+    FILE* input2 = fopen("input2.txt", "w");
+    for (int i = 0; i < N/2; i++) {
+        fprintf(input1, "%lu\n", g1[i]);
+        fprintf(input2, "%lu\n", g2[i]);
+    }
+    fclose(input1);
+    fclose(input2);
+    int32_t* c = calloc(N, sizeof(int32_t));
+    int64_t* g3 = calloc(N/2, sizeof(int64_t));
+    nwc_ntt(q, psis, psis_n, n_neg[q_index], a, b, c);
+    FILE* output = fopen("output.txt", "w");
+    for (int i = 0; i < N/2; i++) {
+        fprintf(output, "%lu\n", c[i]);
+        fprintf(output, "%lu\n", c[i + N/2]);
+    }
+    fclose(output);
+    free(a); free(b); free(c); free(psis); free(psis_n); free(g1); free(g2);
     return 0;
 }
 
